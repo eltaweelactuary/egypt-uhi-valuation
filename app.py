@@ -45,38 +45,29 @@ def log_change(msg):
 # =============================================================================
 
 with st.sidebar:
-    # GCP Authentication Status
+    # 0. Global Auth Check
     credentials = None
-    gcp_error = None
     try:
         credentials = get_gcp_credentials()
-    except Exception as e:
-        gcp_error = str(e)
-        
+    except:
+        pass
+
+    st.header("🔐 Authentication")
+    with st.expander("🔑 Upload Service Account JSON", expanded=not credentials):
+        uploaded_json = st.file_uploader("Drop service_account.json here", type="json")
+        if uploaded_json:
+            import json
+            try:
+                st.session_state.uploaded_gcp_json = json.load(uploaded_json)
+                st.success("JSON Key Loaded! Restarting auth...")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Invalid JSON: {e}")
+    
     if credentials:
-        st.sidebar.success("✅ GCP Cloud Authenticated")
+        st.success("✅ Cloud Active")
     else:
-        st.sidebar.info("💡 Running in Local/Public Mode")
-        with st.sidebar.expander("🔍 GCP Diagnostic Tool"):
-            from gcp_utils import get_gcp_diagnostics
-            diag = get_gcp_diagnostics()
-            if gcp_error:
-                st.error(f"**GCP Error:** {gcp_error}")
-            st.write(f"**Status:** {diag['status']}")
-            for check in diag.get('checks', []):
-                st.write(f"- {check}")
-            st.caption("Common fix: Ensure the key is pasted exactly inside triple quotes \"\"\" in Secrets.")
-        
-        with st.sidebar.expander("🔑 Upload Service Account JSON"):
-            uploaded_json = st.file_uploader("Drop service_account.json here", type="json")
-            if uploaded_json:
-                import json
-                try:
-                    st.session_state.uploaded_gcp_json = json.load(uploaded_json)
-                    st.success("JSON Key Loaded! Restarting auth...")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Invalid JSON: {e}")
+        st.info("💡 Local/Public Mode")
 
     st.header("⚙️ Actuarial Assumptions")
     
@@ -125,17 +116,21 @@ with st.sidebar:
     projection_years = st.slider("Projection Horizon (Years)", 5, 50, 20)
     
     st.markdown("---")
+    import os
     with st.sidebar.expander("📥 Download Demo Data (Governorates)"):
         st.caption("Use these datasets to test the strategic scenarios:")
         
-        with open("demo_port_said.csv", "rb") as f:
-            st.download_button("🚢 Port Said (High Risk)", f, "port_said_baseline.csv", "text/csv", use_container_width=True)
+        if os.path.exists("demo_port_said.csv"):
+            with open("demo_port_said.csv", "rb") as f:
+                st.download_button("🚢 Port Said (High Risk)", f, "port_said_baseline.csv", "text/csv", use_container_width=True)
             
-        with open("demo_luxor.csv", "rb") as f:
-            st.download_button("🏛️ Luxor (Balanced)", f, "luxor_balanced.csv", "text/csv", use_container_width=True)
+        if os.path.exists("demo_luxor.csv"):
+            with open("demo_luxor.csv", "rb") as f:
+                st.download_button("🏛️ Luxor (Balanced)", f, "luxor_balanced.csv", "text/csv", use_container_width=True)
             
-        with open("demo_cairo_industrial.csv", "rb") as f:
-            st.download_button("🏢 Cairo Industrial (Elite)", f, "cairo_elite.csv", "text/csv", use_container_width=True)
+        if os.path.exists("demo_cairo_industrial.csv"):
+            with open("demo_cairo_industrial.csv", "rb") as f:
+                st.download_button("🏢 Cairo Industrial (Elite)", f, "cairo_elite.csv", "text/csv", use_container_width=True)
 
     with st.expander("🛡️ Immutable Audit Trail"):
         if not st.session_state.audit_log:

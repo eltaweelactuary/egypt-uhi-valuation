@@ -47,10 +47,19 @@ def get_gcp_credentials():
 
     # 2. Check for streamlit secrets (Standard for Streamlit Cloud)
     if "gcp_service_account" in st.secrets:
+        # Convert to dict to allow mutation
         info = dict(st.secrets["gcp_service_account"])
-        # Robust handling for newlines in private_key
+        
         if "private_key" in info:
-            info["private_key"] = info["private_key"].replace("\\n", "\n")
+            pk = info["private_key"]
+            # 1. Clean accidental quotes if pasted as a "string"
+            pk = pk.strip().strip('"').strip("'")
+            # 2. Handle escaped newlines
+            pk = pk.replace("\\n", "\n")
+            # 3. Final safety: Ensure it starts and ends correctly with PEM headers
+            # Often users have leading/trailing newlines that cause "extra data" errors
+            info["private_key"] = pk.strip()
+            
         return service_account.Credentials.from_service_account_info(info)
         
     return None

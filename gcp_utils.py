@@ -52,13 +52,18 @@ def get_gcp_credentials():
         
         if "private_key" in info:
             pk = info["private_key"]
-            # 1. Clean accidental quotes if pasted as a "string"
+            # 1. Clean accidental quotes and whitespace
             pk = pk.strip().strip('"').strip("'")
             # 2. Handle escaped newlines
             pk = pk.replace("\\n", "\n")
-            # 3. Final safety: Ensure it starts and ends correctly with PEM headers
-            # Often users have leading/trailing newlines that cause "extra data" errors
-            info["private_key"] = pk.strip()
+            
+            # 3. Robust Regex Extraction to fix "extra data" errors
+            import re
+            match = re.search(r"(-----BEGIN PRIVATE KEY-----[\s\S]*?-----END PRIVATE KEY-----)", pk)
+            if match:
+                info["private_key"] = match.group(1)
+            else:
+                info["private_key"] = pk.strip()
             
         return service_account.Credentials.from_service_account_info(info)
         

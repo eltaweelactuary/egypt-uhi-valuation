@@ -67,9 +67,9 @@ with st.sidebar:
                 st.error(f"Invalid JSON: {e}")
     
     if credentials:
-        st.success("✅ Cloud Active", help="System is connected to Google Cloud. Gemini Strategic AI is authenticated and active.")
+        st.success("✅ Cloud Active")
     else:
-        st.info("💡 Local/Public Mode", help="System is running without a GCP Key. Actuarial math works 100%, but AI Strategic Reasoning (Gemini) is locked.")
+        st.info("💡 Local/Public Mode")
 
     st.header("⚙️ 2. Actuarial Assumptions")
     

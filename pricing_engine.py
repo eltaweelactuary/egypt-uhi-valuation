@@ -25,7 +25,7 @@ class UHISystemConfig:
     # Demographic & Law-specific Rates
     participation_rate: float = 1.0
     employee_contr_rate: float = 0.01
-    employer_contr_rate: float = 0.04
+    employer_contr_rate: float = 0.03
     self_employed_contr_rate: float = 0.04  # Total 4% for self-employed
     family_spouse_contr_rate: float = 0.03
     family_child_contr_rate: float = 0.01
@@ -336,15 +336,16 @@ class ActuarialValuationEngine:
 def generate_dummy_population(size: int = 1000) -> pd.DataFrame:
     """
     Generates population_structure.csv for demonstration.
+    Balanced for higher revenue representation in v1.6.
     """
     np.random.seed(42)
     data = {
         'Age': np.random.randint(18, 75, size),
         'Gender': np.random.choice(['Male', 'Female'], size),
-        'EmploymentStatus': np.random.choice(['Employee', 'Self-employed', 'Non-capable'], size, p=[0.6, 0.2, 0.2]),
-        'MonthlyWage': np.random.normal(6000, 2000, size).clip(3000, 50000),
-        'SpouseInSystem': np.random.choice([True, False], size),
-        'ChildrenCount': np.random.choice([0, 1, 2, 3], size, p=[0.4, 0.3, 0.2, 0.1]),
-        'EstimatedAnnualCost': np.random.normal(5000, 1500, size).clip(500, 50000)
+        'EmploymentStatus': np.random.choice(['Employee', 'Self-employed', 'Non-capable'], size, p=[0.7, 0.2, 0.1]),
+        'MonthlyWage': np.random.normal(12000, 5000, size).clip(6000, 100000), # Increased median to 12k
+        'SpouseInSystem': np.random.choice([True, False], size, p=[0.6, 0.4]),
+        'ChildrenCount': np.random.choice([0, 1, 2, 3], size, p=[0.3, 0.3, 0.3, 0.1]),
+        'EstimatedAnnualCost': np.random.normal(6000, 2000, size).clip(1000, 40000)
     }
     return pd.DataFrame(data)

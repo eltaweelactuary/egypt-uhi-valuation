@@ -145,7 +145,10 @@ with st.sidebar:
     
     st.divider()
     if st.button("🔄 Reset & Return to Main", width="stretch"):
-        st.session_state.population_df = None
+        # Explicitly clear state and force rerun
+        for key in ["population_df", "main_chat"]:
+            if key in st.session_state:
+                del st.session_state[key]
         st.rerun()
 
 # =============================================================================
@@ -157,22 +160,24 @@ if 'population_df' not in st.session_state:
     st.session_state.population_df = None
 
 if st.session_state.population_df is None:
-    st.info("🏛️ **Mission Control: System Initialization**")
+    st.info("🏛️ **Mission Control: System Initialization (v1.6 Legal Fidelity)**")
     st.markdown("""
     ### 👋 Welcome, Executive Actuary.
-    To unlock the **Actuarial Command Center** and its specialized AI Strategic Modules, 
-    please begin by initializing the citizen population structure.
+    This platform is strictly aligned with **Egypt Law No. 2 of 2018**. 
+    Note that the current legal **Employer Contribution is fixed at 3%**. 
+    
+    To begin the sovereign valuation, please initialize the citizen base:
     """)
     
     col1, col2 = st.columns([2, 1])
     with col1:
         uploaded_file = st.file_uploader("📤 Phase 1: Upload Citizen Structure (CSV)", type="csv", help="Upload the demographic dataset to trigger analytical tasks.")
     with col2:
-        st.caption("Don't have a file?")
-        if st.button("🚀 Initialize with Demo Data", width="stretch"):
+        st.caption("Strategic Simulation")
+        if st.button("🚀 Initialize High-Value Demo", width="stretch"):
             from pricing_engine import generate_dummy_population
             st.session_state.population_df = generate_dummy_population(1000)
-            st.success("✅ Demo Data Initialized.")
+            st.success("✅ High-Value Data Initialized (v1.6 Optimized).")
             st.rerun()
             
     if uploaded_file:

@@ -1,334 +1,149 @@
-# Actuarial Pricing Engine - Core Module
+"""
+Actuarial Valuation Engine for Egypt Universal Health Insurance (UHI)
+Complies with Law No. 2 of 2018.
+"""
 
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import KFold
-from sklearn.metrics import mean_absolute_error
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
-import warnings
-warnings.filterwarnings('ignore')
-
-# =============================================================================
-# DATA CLASSES FOR CONFIGURATION
-# =============================================================================
+from typing import Dict, List, Tuple
 
 @dataclass
-class PricingConfig:
-    """Dynamic pricing parameters - adjustable via dashboard sliders"""
-    expense_loading: float = 0.25
-    profit_margin: float = 0.10
-    contingency_margin: float = 0.05
-    reinsurance_cost: float = 0.03
-    commission_rate: float = 0.15
-    
-    @property
-    def total_loading(self) -> float:
-        return (self.expense_loading + self.profit_margin + 
-                self.contingency_margin + self.reinsurance_cost + 
-                self.commission_rate)
-
-
-@dataclass
-class ModelConfig:
-    """Model training configuration"""
-    use_xgboost: bool = True
-    use_lightgbm: bool = True
-    use_catboost: bool = True
-    n_folds: int = 5
-    n_estimators: int = 500
-    max_depth: int = 6
-    learning_rate: float = 0.05
-    random_state: int = 42
-
-
-# =============================================================================
-# FEATURE ENGINEERING (Fixes weakness #1: Date features)
-# =============================================================================
-
-def extract_date_features(df: pd.DataFrame) -> pd.DataFrame:
+class UHISystemConfig:
     """
-    Extract actuarially-relevant features from date columns.
-    Fixes: Previously dates were ignored entirely.
+    Social Health Insurance Actuarial Assumptions (Law 2/2018)
     """
-    df = df.copy()
+    # Economic Assumptions
+    wage_inflation: float = 0.07
+    medical_inflation: float = 0.12
+    investment_return_rate: float = 0.10
     
-    # List of potential date column pairs
-    date_columns = {
-        'accident': ['DateTimeOfAccident', 'DateOfAccident'],
-        'reported': ['DateReported'],
-        'birth': ['DateOfBirth']
-    }
+    # Administrative Assumptions
+    admin_expense_pct: float = 0.04  # Capped at 5% per policy guidelines
     
-    # Find actual columns in the dataframe
-    def find_date_col(candidates):
-        for col in candidates:
-            if col in df.columns:
-                return col
-        return None
+    # Demographic & Law-specific Rates
+    participation_rate: float = 1.0
+    employee_contr_rate: float = 0.01
+    employer_contr_rate: float = 0.03
+    family_spouse_contr_rate: float = 0.03
+    family_child_contr_rate: float = 0.01
+    state_non_capable_rate: float = 0.05  # 5% of min wage
     
-    accident_col = find_date_col(date_columns['accident'])
-    reported_col = find_date_col(date_columns['reported'])
-    birth_col = find_date_col(date_columns['birth'])
+    # Market Inputs (Lump Sums in Millions)
+    cigarette_tax_lump: float = 3000.0  # Annual estimate
+    highway_tolls_lump: float = 500.0    # Annual estimate
     
-    # Parse dates
-    if accident_col:
-        df['_accident_date'] = pd.to_datetime(df[accident_col], errors='coerce')
-        # Extract seasonality
-        df['AccidentMonth'] = df['_accident_date'].dt.month
-        df['AccidentQuarter'] = df['_accident_date'].dt.quarter
-        df['AccidentDayOfWeek'] = df['_accident_date'].dt.dayofweek
+    # External Constants
+    min_wage_annual: float = 36000.0  # EGP
+
+class ActuarialValuationEngine:
+    """
+    Engine for multi-year solvency projection of the UHI system.
+    """
+    def __init__(self, config: UHISystemConfig):
+        self.config = config
+
+    def project_solvency(self, population_df: pd.DataFrame, years: int = 10) -> pd.DataFrame:
+        """
+        Projects revenues, costs, and reserves over a specified horizon.
+        """
+        projections = []
         
-    if reported_col:
-        df['_reported_date'] = pd.to_datetime(df[reported_col], errors='coerce')
+        # Initial State
+        accumulated_reserve = 0.0
         
-    if birth_col:
-        df['_birth_date'] = pd.to_datetime(df[birth_col], errors='coerce')
-    
-    # Calculate Age at Accident
-    if birth_col and accident_col:
-        if '_birth_date' in df.columns and '_accident_date' in df.columns:
-            df['AgeAtAccident'] = (
-                (df['_accident_date'] - df['_birth_date']).dt.days / 365.25
-            ).round(0)
-            df['AgeAtAccident'] = df['AgeAtAccident'].clip(0, 120)  # Cap outliers
-    
-    # Calculate Reporting Lag (days between accident and report)
-    if accident_col and reported_col:
-        if '_accident_date' in df.columns and '_reported_date' in df.columns:
-            df['ReportingLagDays'] = (
-                (df['_reported_date'] - df['_accident_date']).dt.days
-            )
-            df['ReportingLagDays'] = df['ReportingLagDays'].clip(0, 365)  # Cap outliers
-    
-    # Drop temporary columns
-    temp_cols = ['_accident_date', '_reported_date', '_birth_date']
-    df = df.drop(columns=[c for c in temp_cols if c in df.columns], errors='ignore')
-    
-    return df
-
-
-# =============================================================================
-# DATA CLEANING (Fixes weakness #2: Advanced imputation)
-# =============================================================================
-
-def clean_data(df: pd.DataFrame, use_native_handling: bool = True) -> pd.DataFrame:
-    """
-    Clean data with improved missing value handling.
-    
-    Args:
-        df: Input DataFrame
-        use_native_handling: If True, use -999 for native model handling (XGBoost/LightGBM/CatBoost)
-                            If False, use median imputation
-    """
-    df = df.copy()
-    
-    for col in df.select_dtypes(include=[np.number]).columns:
-        if df[col].isnull().any():
-            if use_native_handling:
-                # Models like XGBoost/LightGBM handle missing values better than manual imputation
-                df[col] = df[col].fillna(-999)
-            else:
-                df[col] = df[col].fillna(df[col].median())
-    
-    for col in df.select_dtypes(include=['object']).columns:
-        if df[col].isnull().any():
-            df[col] = df[col].fillna('MISSING')
-    
-    return df
-
-
-# =============================================================================
-# MODEL TRAINING
-# =============================================================================
-
-def prepare_features(train_df: pd.DataFrame, test_df: pd.DataFrame, 
-                     target_col: str, exclude_cols: List[str] = None) -> Tuple:
-    """Prepare features for modeling"""
-    
-    if exclude_cols is None:
-        exclude_cols = [target_col, 'ClaimNumber', 'id', 'ClaimDescription', 
-                       'AccidentDescription', 'DateTimeOfAccident', 
-                       'DateReported', 'DateOfBirth', 'DateOfAccident']
-    
-    feature_cols = [c for c in train_df.columns 
-                   if c not in exclude_cols and c in test_df.columns]
-    
-    train_clean = train_df.copy()
-    test_clean = test_df.copy()
-    
-    # Label encode categorical columns
-    for col in train_clean[feature_cols].select_dtypes(include=['object']).columns:
-        le = LabelEncoder()
-        all_vals = pd.concat([train_clean[col], test_clean[col]]).astype(str).unique()
-        le.fit(all_vals)
-        train_clean[col] = le.transform(train_clean[col].astype(str))
-        test_clean[col] = le.transform(test_clean[col].astype(str))
-    
-    X = train_clean[feature_cols].fillna(-999)
-    X_test = test_clean[feature_cols].fillna(-999)
-    y = np.log1p(train_clean[target_col])
-    
-    return X, X_test, y, feature_cols
-
-
-def train_models(X: pd.DataFrame, y: pd.Series, X_test: pd.DataFrame,
-                config: ModelConfig, progress_callback=None) -> Dict:
-    """
-    Train ensemble of models with cross-validation.
-    
-    Returns:
-        Dictionary with model predictions and metrics
-    """
-    # Import here to avoid issues if not installed
-    import xgboost as xgb
-    import lightgbm as lgb
-    from catboost import CatBoostRegressor
-    
-    kf = KFold(n_splits=config.n_folds, shuffle=True, random_state=config.random_state)
-    results = {}
-    
-    models_to_train = []
-    if config.use_xgboost:
-        models_to_train.append('xgboost')
-    if config.use_lightgbm:
-        models_to_train.append('lightgbm')
-    if config.use_catboost:
-        models_to_train.append('catboost')
-    
-    for model_name in models_to_train:
-        oof = np.zeros(len(X))
-        pred = np.zeros(len(X_test))
-        fold_scores = []
+        # Base Population Metrics
+        total_employees = len(population_df[population_df['EmploymentStatus'] == 'Employee'])
+        total_non_capable = len(population_df[population_df['EmploymentStatus'] == 'Non-capable'])
         
-        for fold, (tr_idx, val_idx) in enumerate(kf.split(X)):
-            X_tr, X_val = X.iloc[tr_idx], X.iloc[val_idx]
-            y_tr, y_val = y.iloc[tr_idx], y.iloc[val_idx]
-            
-            if model_name == 'xgboost':
-                model = xgb.XGBRegressor(
-                    n_estimators=config.n_estimators, 
-                    max_depth=config.max_depth,
-                    learning_rate=config.learning_rate,
-                    random_state=config.random_state, 
-                    verbosity=0
-                )
-                model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], verbose=False)
-                
-            elif model_name == 'lightgbm':
-                model = lgb.LGBMRegressor(
-                    n_estimators=config.n_estimators,
-                    max_depth=config.max_depth,
-                    learning_rate=config.learning_rate,
-                    random_state=config.random_state,
-                    verbose=-1
-                )
-                model.fit(X_tr, y_tr, eval_set=[(X_val, y_val)],
-                         callbacks=[lgb.early_stopping(50, verbose=False)])
-                
-            else:  # catboost
-                model = CatBoostRegressor(
-                    iterations=config.n_estimators,
-                    depth=config.max_depth,
-                    learning_rate=config.learning_rate,
-                    random_state=config.random_state,
-                    verbose=0
-                )
-                model.fit(X_tr, y_tr, eval_set=(X_val, y_val), early_stopping_rounds=50)
-            
-            oof[val_idx] = model.predict(X_val)
-            pred += model.predict(X_test) / config.n_folds
-            fold_mae = mean_absolute_error(y_val, oof[val_idx])
-            fold_scores.append(fold_mae)
-            
-            if progress_callback:
-                progress_callback(model_name, fold + 1, config.n_folds, fold_mae)
-        
-        oof_mae = mean_absolute_error(y, oof)
-        results[model_name] = {
-            'oof': oof,
-            'pred': pred,
-            'fold_scores': fold_scores,
-            'oof_mae': oof_mae,
-            'model': model,
-            'feature_importance': model.feature_importances_
-        }
-    
-    return results
-
-
-# =============================================================================
-# PRICING CALCULATIONS (Fixes weakness #4: Dynamic pricing)
-# =============================================================================
-
-def calculate_premiums(predictions: np.ndarray, config: PricingConfig,
-                      risk_scores: np.ndarray = None) -> Dict:
-    """
-    Calculate premiums with dynamic risk-based adjustments.
-    
-    Args:
-        predictions: Log-transformed predicted losses
-        config: Pricing configuration
-        risk_scores: Optional per-claim risk scores for dynamic margin adjustment
-    """
-    expected_loss = np.expm1(predictions)
-    
-    # Base premium calculation
-    base_premium = expected_loss * (1 + config.total_loading)
-    
-    # Dynamic margin adjustment based on prediction uncertainty (if risk scores provided)
-    if risk_scores is not None:
-        # Higher risk = higher contingency margin
-        risk_adjustment = 1 + (risk_scores * config.contingency_margin)
-        final_premium = base_premium * risk_adjustment
-    else:
-        final_premium = base_premium
-    
-    # Apply min/max bounds
-    final_premium = np.clip(final_premium, 100, 1_000_000)
-    
-    return {
-        'expected_loss': expected_loss,
-        'base_premium': base_premium,
-        'final_premium': final_premium,
-        'mean_premium': np.mean(final_premium),
-        'median_premium': np.median(final_premium),
-        'min_premium': np.min(final_premium),
-        'max_premium': np.max(final_premium),
-        'total_loading_pct': config.total_loading * 100
-    }
-
-
-def sensitivity_analysis(predictions: np.ndarray, base_config: PricingConfig,
-                        param_name: str, values: List[float]) -> pd.DataFrame:
-    """
-    Perform sensitivity analysis by varying a pricing parameter.
-    
-    Args:
-        predictions: Log-transformed predicted losses
-        base_config: Base pricing configuration
-        param_name: Name of parameter to vary
-        values: List of values to test
-    """
-    results = []
-    
-    for val in values:
-        config = PricingConfig(
-            expense_loading=base_config.expense_loading,
-            profit_margin=base_config.profit_margin,
-            contingency_margin=base_config.contingency_margin,
-            reinsurance_cost=base_config.reinsurance_cost,
-            commission_rate=base_config.commission_rate
+        # Calculate Base Annual Revenue from Population
+        # 1. Employee + Employer Contributions
+        wage_revenue_base = (
+            population_df[population_df['EmploymentStatus'] == 'Employee']['MonthlyWage'].sum() * 12 * 
+            (self.config.employee_contr_rate + self.config.employer_contr_rate)
         )
-        setattr(config, param_name, val)
         
-        premium_result = calculate_premiums(predictions, config)
-        results.append({
-            'parameter': param_name,
-            'value': val,
-            'mean_premium': premium_result['mean_premium'],
-            'total_loading': config.total_loading * 100
-        })
-    
-    return pd.DataFrame(results)
+        # 2. Family Contributions (Heads of families pay for dependents)
+        # Assuming population_df includes 'SpouseInSystem' and 'ChildrenCount'
+        family_contr_base = 0
+        if 'SpouseInSystem' in population_df.columns:
+            family_contr_base += (
+                population_df[population_df['SpouseInSystem'] == True]['MonthlyWage'].sum() * 12 * 
+                self.config.family_spouse_contr_rate
+            )
+        if 'ChildrenCount' in population_df.columns:
+            family_contr_base += (
+                (population_df['ChildrenCount'] * population_df['MonthlyWage']).sum() * 12 * 
+                self.config.family_child_contr_rate
+            )
+
+        # 3. State Treasury Support for Non-capables
+        state_support_base = total_non_capable * self.config.min_wage_annual * self.config.state_non_capable_rate
+        
+        # Base Medical Cost
+        # In a real model, this would use Age/Gender loss ratios. 
+        # Here we use an aggregate mean cost from the population data.
+        base_annual_cost = population_df['EstimatedAnnualCost'].sum() if 'EstimatedAnnualCost' in population_df.columns else 5000 * len(population_df)
+
+        for year in range(years):
+            # Apply Inflations
+            year_wage_growth = (1 + self.config.wage_inflation) ** year
+            year_med_growth = (1 + self.config.medical_inflation) ** year
+            
+            # Revenue Calculation
+            rev_wage = wage_revenue_base * year_wage_growth
+            rev_family = family_contr_base * year_wage_growth
+            rev_state = state_support_base * year_wage_growth # Assume support scales with wage/min-wage growth
+            rev_other = self.config.cigarette_tax_lump + self.config.highway_tolls_lump
+            
+            total_revenue = rev_wage + rev_family + rev_state + rev_other
+            
+            # Cost Calculation
+            total_medical_cost = base_annual_cost * year_med_growth
+            admin_cost = total_revenue * self.config.admin_expense_pct
+            
+            total_expenditure = total_medical_cost + admin_cost
+            
+            # Net Position
+            net_cash_flow = total_revenue - total_expenditure
+            
+            # Reserve & Investment Income
+            investment_income = accumulated_reserve * self.config.investment_return_rate
+            accumulated_reserve += net_cash_flow + investment_income
+            
+            # Solvency Metric
+            state_subsidy_required = abs(accumulated_reserve) if accumulated_reserve < 0 else 0
+            
+            projections.append({
+                'Year': year + 1,
+                'Revenue_Wage': rev_wage,
+                'Revenue_Family': rev_family,
+                'Revenue_State': rev_state,
+                'Revenue_Other': rev_other,
+                'Total_Revenue': total_revenue,
+                'Medical_Expenditure': total_medical_cost,
+                'Admin_Expenditure': admin_cost,
+                'Total_Expenditure': total_expenditure,
+                'Net_Cash_Flow': net_cash_flow,
+                'Investment_Income': investment_income,
+                'Reserve_Fund': accumulated_reserve,
+                'Required_State_Subsidy': state_subsidy_required
+            })
+            
+        return pd.DataFrame(projections)
+
+def generate_dummy_population(size: int = 1000) -> pd.DataFrame:
+    """
+    Generates population_structure.csv for demonstration.
+    """
+    np.random.seed(42)
+    data = {
+        'Age': np.random.randint(18, 75, size),
+        'Gender': np.random.choice(['Male', 'Female'], size),
+        'EmploymentStatus': np.random.choice(['Employee', 'Self-employed', 'Non-capable'], size, p=[0.6, 0.2, 0.2]),
+        'MonthlyWage': np.random.normal(6000, 2000, size).clip(3000, 50000),
+        'SpouseInSystem': np.random.choice([True, False], size),
+        'ChildrenCount': np.random.choice([0, 1, 2, 3], size, p=[0.4, 0.3, 0.2, 0.1]),
+        'EstimatedAnnualCost': np.random.normal(5000, 1500, size).clip(500, 50000)
+    }
+    return pd.DataFrame(data)

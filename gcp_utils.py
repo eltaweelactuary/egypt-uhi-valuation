@@ -158,7 +158,7 @@ def ask_gemini_actuary(user_query: str, data_summary: str):
         return "⚠️ Gemini is unavailable: Check GCP Configuration."
         
     try:
-        model = GenerativeModel("gemini-1.5-flash")
+        model = GenerativeModel("gemini-2.0-flash-001")
         
         system_prompt = f"""
         You are a Senior Actuarial AI Advisor for the Egyptian UHI Authority.

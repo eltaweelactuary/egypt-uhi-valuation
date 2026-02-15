@@ -38,46 +38,42 @@ def load_gcp_secrets(secret_id: str, project_id: str = None):
 
 def get_gcp_credentials():
     """
-    Initializes GCP credentials from various sources.
+    Initializes GCP credentials using a robust file-dumping strategy.
+    This avoids ASN.1 parsing errors common with dictionary-based loading.
     """
-    # 1. Check for local file first
+    import tempfile
+    
+    # 1. Check for local file first (Development)
     local_path = "service_account.json"
     if os.path.exists(local_path):
         return service_account.Credentials.from_service_account_file(local_path)
 
-    # 2. Check for streamlit secrets (Standard for Streamlit Cloud)
+    # 2. Check for streamlit secrets (Production/Streamlit Cloud)
     if "gcp_service_account" in st.secrets:
-        # Convert to dict to allow mutation
-        info = dict(st.secrets["gcp_service_account"])
-        
-        if "private_key" in info:
-            pk = info["private_key"]
-            # 1. Preliminary cleanup
-            pk = pk.replace("\\n", "\n").strip().strip('"').strip("'")
+        try:
+            # We dump the secrets to a temp file to ensure perfect JSON formatting
+            # and to satisfy the google-auth library's preference for files.
+            info = dict(st.secrets["gcp_service_account"])
             
-            # 2. Hyper-Clean Reconstruction: Binary-safe Base64 normalization
-            import re
-            import base64
+            # Reconstruction of private key to remove any escaped characters or artifacts
+            if "private_key" in info:
+                pk = info["private_key"]
+                pk = pk.replace("\\n", "\n").strip().strip('"').strip("'")
+                info["private_key"] = pk
+
+            # Create a temporary file that persists long enough for the auth client
+            tmp_dir = tempfile.gettempdir()
+            tmp_path = os.path.join(tmp_dir, "gcp_credentials_actuarial.json")
             
-            # Extract content between markers
-            match = re.search(r'-----BEGIN PRIVATE KEY-----([\s\S]*?)-----END PRIVATE KEY-----', pk)
-            if match:
-                # Remove all whitespace from body
-                body_raw = "".join(match.group(1).split())
-                try:
-                    # Binary normalization: Decode then re-encode to ensure pure Base64
-                    binary_key = base64.b64decode(body_raw)
-                    # Re-encode to clean Base64 string
-                    body_clean = base64.b64encode(binary_key).decode('utf-8')
-                    # Standard PEM wrapping (64 chars per line is best practice but 1 line usually works)
-                    info["private_key"] = f"-----BEGIN PRIVATE KEY-----\n{body_clean}\n-----END PRIVATE KEY-----"
-                except Exception:
-                    # Fallback to simple split if binary decode fails
-                    info["private_key"] = f"-----BEGIN PRIVATE KEY-----\n{body_raw}\n-----END PRIVATE KEY-----"
-            else:
-                info["private_key"] = pk.strip()
+            with open(tmp_path, "w") as f:
+                json.dump(info, f)
             
-        return service_account.Credentials.from_service_account_info(info)
+            # Set the environment variable for libraries that check it automatically
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = tmp_path
+            
+            return service_account.Credentials.from_service_account_file(tmp_path)
+        except Exception as e:
+            st.error(f"GCP Initialization Error: {e}")
         
     return None
 

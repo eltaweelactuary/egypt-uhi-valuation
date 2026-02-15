@@ -65,9 +65,11 @@ def initialize_vertex_ai():
                 
     if project_id:
         try:
-            vertexai.init(project=project_id, location="us-central1")
+            # CRITICAL: Pass explicit credentials to prevent auth search loops
+            vertexai.init(project=project_id, location="us-central1", credentials=creds)
             return True
-        except:
+        except Exception as e:
+            st.error(f"Vertex AI Init Error: {str(e)}")
             pass
             
     return False

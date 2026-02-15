@@ -51,38 +51,43 @@ class ActuarialValuationEngine:
         """
         projections = []
         
+        # Helper to safely get column or return default
+        def safe_get(col, default=0):
+            return population_df[col] if col in population_df.columns else pd.Series([default] * len(population_df))
+
         # Initial State
         accumulated_reserve = 0.0
         
-        # Base Population Metrics
-        total_employees = len(population_df[population_df['EmploymentStatus'] == 'Employee'])
-        total_self_employed = len(population_df[population_df['EmploymentStatus'] == 'Self-employed'])
-        total_non_capable = len(population_df[population_df['EmploymentStatus'] == 'Non-capable'])
+        # Base Population Metrics (Robust Handling)
+        status_col = population_df['EmploymentStatus'] if 'EmploymentStatus' in population_df.columns else pd.Series(['Unknown'] * len(population_df))
+        total_employees = len(population_df[status_col == 'Employee'])
+        total_self_employed = len(population_df[status_col == 'Self-employed'])
+        total_non_capable = len(population_df[status_col == 'Non-capable'])
         
         # Calculate Base Annual Revenue from Population
+        wages = safe_get('MonthlyWage', 0)
+        
         # 1. Employee + Employer Contributions
         wage_revenue_base = (
-            population_df[population_df['EmploymentStatus'] == 'Employee']['MonthlyWage'].sum() * 12 * 
-            (self.config.employee_contr_rate + self.config.employer_contr_rate)
-        )
+            population_df[status_col == 'Employee']['MonthlyWage'].sum() if 'MonthlyWage' in population_df.columns and 'EmploymentStatus' in population_df.columns else 0
+        ) * 12 * (self.config.employee_contr_rate + self.config.employer_contr_rate)
         
         # 2. Self-employed Contributions (4% total)
         self_employed_revenue_base = (
-            population_df[population_df['EmploymentStatus'] == 'Self-employed']['MonthlyWage'].sum() * 12 * 
-            self.config.self_employed_contr_rate
-        )
+            population_df[status_col == 'Self-employed']['MonthlyWage'].sum() if 'MonthlyWage' in population_df.columns and 'EmploymentStatus' in population_df.columns else 0
+        ) * 12 * self.config.self_employed_contr_rate
         
         # Combine work-based revenue
         total_work_revenue_base = wage_revenue_base + self_employed_revenue_base
         
         # 3. Family Contributions (Heads of families pay for dependents)
         family_contr_base = 0
-        if 'SpouseInSystem' in population_df.columns:
+        if 'SpouseInSystem' in population_df.columns and 'MonthlyWage' in population_df.columns:
             family_contr_base += (
                 population_df[population_df['SpouseInSystem'] == True]['MonthlyWage'].sum() * 12 * 
                 self.config.family_spouse_contr_rate
             )
-        if 'ChildrenCount' in population_df.columns:
+        if 'ChildrenCount' in population_df.columns and 'MonthlyWage' in population_df.columns:
             family_contr_base += (
                 (population_df['ChildrenCount'] * population_df['MonthlyWage']).sum() * 12 * 
                 self.config.family_child_contr_rate

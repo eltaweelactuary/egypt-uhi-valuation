@@ -151,58 +151,86 @@ class ActuarialValuationEngine:
             
         return pd.DataFrame(projections)
 
-    def _detect_risk_flags(self, year_rev, year_exp, admin_exp, net_cf, reserve, inv_yield, med_infl, wage_infl) -> List[Dict]:
+    def explain_projection(self, df_proj: pd.DataFrame) -> List[str]:
         """
-        Actuarial Risk Detection Logic based on Law 2/2018.
+        XAI Module: Explains the top drivers of cost increase.
         """
-        flags = []
+        if len(df_proj) < 2: return ["Insufficient data for trend analysis."]
         
-        # 1. Solvency Breach (Bankruptcy)
-        if reserve < 0:
-            flags.append({
-                "level": "CRITICAL",
-                "type": "Bankruptcy",
-                "msg": "Article 40 Guarantee Triggered: Technical insolvency projected.",
-                "action": "Immediate State Treasury Intervention Required."
-            })
+        start = df_proj.iloc[0]
+        end = df_proj.iloc[-1]
+        
+        total_delta = end['Total_Expenditure'] - start['Total_Expenditure']
+        
+        # Attribution calculation
+        # 1. Inflation Effect (approx)
+        inflation_impact = (end['Medical_Expenditure'] / ( (1 + self.config.medical_inflation)**(len(df_proj)-1) ) ) * ((1 + self.config.medical_inflation)**(len(df_proj)-1) - 1)
+        # 2. Admin Effect
+        admin_delta = end['Admin_Expenditure'] - start['Admin_Expenditure']
+        
+        explanations = []
+        inf_pct = (inflation_impact / total_delta) * 100 if total_delta > 0 else 0
+        explanations.append(f"📈 Medical Inflation: Contributed ~{inf_pct:.1f}% to the projected cost rise.")
+        
+        adm_pct = (admin_delta / total_delta) * 100 if total_delta > 0 else 0
+        explanations.append(f"🏢 Admin Operations: Contributed ~{adm_pct:.1f}% to expenditure growth.")
+        
+        if end['Required_State_Subsidy'] > 0:
+            explanations.append("⚠️ Sustainability Gap: Current revenue growth is failing to outpace medical trend.")
             
-        # 2. Inflation Gap
-        if med_infl > (wage_infl + 0.02):
-            flags.append({
-                "level": "WARNING",
-                "type": "Inflation Gap",
-                "msg": f"Medical inflation ({med_infl:.1%}) significantly exceeds wage growth ({wage_infl:.1%}).",
-                "action": "Renegotiate provider primary rates or increase payroll contribution caps."
-            })
+        return explanations
+
+    def run_monte_carlo_simulation(self, population_df: pd.DataFrame, years: int = 20, n_sims: int = 1000) -> Dict:
+        """
+        Module B: Stochastic Monte Carlo Simulation (Solvency II style).
+        """
+        all_reserves = np.zeros((n_sims, years))
+        
+        # Base config for simulation
+        base_med_inf = self.config.medical_inflation
+        base_inv_ret = self.config.investment_return_rate
+        
+        for i in range(n_sims):
+            # Introduce randomness per simulation
+            sim_med_inf = np.random.normal(base_med_inf, 0.02)
+            sim_inv_ret = np.random.normal(base_inv_ret, 0.02)
             
-        # 3. Admin Cost Violation (Legal Cap)
-        if admin_exp > (year_rev * 0.05):
-            flags.append({
-                "level": "CRITICAL",
-                "type": "Legal Breach",
-                "msg": f"Admin expenses ({admin_exp/year_rev:.1%}) exceed the 5% legal cap.",
-                "action": "Optimize administrative operations or freeze staff expansion."
-            })
+            sim_config = UHISystemConfig(
+                medical_inflation=sim_med_inf,
+                investment_return_rate=sim_inv_ret,
+                wage_inflation=self.config.wage_inflation,
+                admin_expense_pct=self.config.admin_expense_pct
+            )
+            sim_engine = ActuarialValuationEngine(sim_config)
+            sim_df = sim_engine.project_solvency(population_df, years=years)
+            all_reserves[i, :] = sim_df['Reserve_Fund'].values
             
-        # 4. Liquidity Trap
-        if net_cf < 0 and reserve > 0:
-            flags.append({
-                "level": "WARNING",
-                "type": "Liquidity Trap",
-                "msg": "Operating deficit detected. System is currently eroding its reserve base.",
-                "action": "Introduce new revenue streams (e.g., Highway Tolls adjustment)."
-            })
-            
-        # 5. Asset Erosion
-        if inv_yield < med_infl:
-            flags.append({
-                "level": "WARNING",
-                "type": "Asset Erosion",
-                "msg": "Investment yields are failing to beat medical inflation.",
-                "action": "Shift investment portfolio to higher-yield treasury instruments."
-            })
-            
-        return flags
+        # Calculate percentiles
+        p5 = np.percentile(all_reserves, 5, axis=0)
+        p50 = np.percentile(all_reserves, 50, axis=0)
+        p95 = np.percentile(all_reserves, 95, axis=0)
+        
+        # Probability of Insolvency (Reserve < 0 at end of horizon)
+        insolvent_count = np.sum(all_reserves[:, -1] < 0)
+        prob_insolvency = (insolvent_count / n_sims) * 100
+        
+        return {
+            "p5": p5,
+            "p50": p50,
+            "p95": p95,
+            "prob_insolvency": prob_insolvency,
+            "years": list(range(1, years + 1))
+        }
+
+    def suggest_reinsurance(self, avg_annual_cost: float) -> str:
+        """
+        Module D: Reinsurance Optimization.
+        """
+        # Heuristic optimization for UHI scale
+        retention = avg_annual_cost * 0.02 # Recommend retaining 2% of annual cost
+        potential_saving = avg_annual_cost * 0.005 # Estimated premium saving via optimized quota share
+        
+        return f"💡 Strategy: Retain first {retention/1e6:.1f}M EGP. Transfer excess risk to international re-insurers. Est. Saving: {potential_saving/1e6:.1f}M EGP."
 
 def generate_dummy_population(size: int = 1000) -> pd.DataFrame:
     """

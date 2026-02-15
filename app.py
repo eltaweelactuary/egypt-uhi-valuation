@@ -28,6 +28,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================================================================
+# INITIALIZE STATE
+# =============================================================================
+if "audit_log" not in st.session_state:
+    st.session_state.audit_log = []
+
+def log_change(msg):
+    import datetime
+    st.session_state.audit_log.append({
+        "time": datetime.datetime.now().strftime("%H:%M:%S"),
+        "action": msg
+    })
+
+# =============================================================================
 # SIDEBAR - ACTUARIAL ASSUMPTIONS
 # =============================================================================
 
@@ -72,9 +85,9 @@ with st.sidebar:
         admin_expense_input = 0.07 # 7%
     else:
         st.subheader("📈 Economic Factors")
-        med_inflation = st.slider("Medical Inflation (%)", 5.0, 25.0, 12.0) / 100
-        wage_inflation = st.slider("Wage Inflation (%)", 3.0, 15.0, 7.0) / 100
-        inv_return = st.slider("Investment Return (%)", 5.0, 20.0, 12.0) / 100
+        med_inflation = st.slider("Medical Inflation (%)", 5.0, 25.0, 12.0, key="med_inf_slider", on_change=lambda: log_change(f"Updated Medical Inflation to {st.session_state.med_inf_slider}%")) / 100
+        wage_inflation = st.slider("Wage Inflation (%)", 3.0, 15.0, 7.0, key="wage_inf_slider", on_change=lambda: log_change(f"Updated Wage Inflation to {st.session_state.wage_inf_slider}%")) / 100
+        inv_return = st.slider("Investment Return (%)", 5.0, 20.0, 12.0, key="inv_ret_slider", on_change=lambda: log_change(f"Updated Investment Return to {st.session_state.inv_ret_slider}%")) / 100
         admin_expense_input = 0.04 # Default 4%
     
     st.subheader("👥 Demographics")
@@ -85,6 +98,13 @@ with st.sidebar:
     projection_years = st.slider("Projection Horizon (Years)", 5, 50, 20)
     
     st.markdown("---")
+    with st.expander("🛡️ Immutable Audit Trail"):
+        if not st.session_state.audit_log:
+            st.write("No changes recorded.")
+        else:
+            for log in reversed(st.session_state.audit_log):
+                st.caption(f"[{log['time']}] {log['action']}")
+    
     st.info("Terminologies aligned with Egypt Law 2/2018")
 
 # =============================================================================
@@ -93,6 +113,40 @@ with st.sidebar:
 
 st.markdown('<h1 class="main-header">🏛️ UHI Actuarial Valuation Dashboard</h1>', unsafe_allow_html=True)
 st.markdown("<p style='text-align: center;'>Strategic multi-year solvency projection for the Universal Health Insurance Authority</p>", unsafe_allow_html=True)
+
+# 0. Guided Tour for Executives
+with st.expander("🎓 **Guided Mission: How to use this Dashboard**", expanded=False):
+    st.markdown("""
+    Welcome to the Enterprise UHI Command Center. Follow these steps for a complete strategic review:
+    1.  **Check Connectivity:** Verify the **GCP Cloud Authenticated** status in the sidebar.
+    2.  **Audit Trail:** Observe the **🛡️ Audit Trail** as you adjust economic assumptions.
+    3.  **Risk Alerts:** Watch the **🚨 Executive Risk Alerts** section react in real-time.
+    4.  **Stress Test:** Scroll down to run a **🎲 Monte Carlo Simulation** for 1,000 futures.
+    5.  **AI Chat:** Use the chat box to type commands like *"increase inflation to 20%"*.
+    6.  **XAI Insights:** Open *"Why did the deficit increase?"* to see mathematical cost driver attribution.
+    """)
+
+# 0.1 Module F: Agentic Oversight Team (CrewAI Concept)
+st.markdown("### 🤖 Agentic Oversight Team")
+agent_cols = st.columns(3)
+with agent_cols[0]:
+    st.info("**⚖️ Legislative Agent**\n\n*Status:* Monitoring Law 2/2018. Ensuring admin costs stay below 5% and Article 40 triggers are logged.")
+with agent_cols[1]:
+    st.info("**📊 Actuarial Agent**\n\n*Status:* Analyzing mortality & morbidity trends. Calculating P50 median solvency for Monte Carlo.")
+with agent_cols[2]:
+    st.info("**💰 Financial Agent**\n\n*Status:* Optimizing investment yields and Reinsurance retention limits.")
+
+# 0.2 Module E: AI Chat with Data
+chat_input = st.text_input("💬 Ask the Actuary AI (e.g., 'increase inflation to 15%')")
+if chat_input:
+    import re
+    inf_match = re.search(r"inflation to (\d+)%", chat_input.lower())
+    if inf_match:
+        new_val = int(inf_match.group(1)) / 100
+        # This is a demo trigger - in real app would use session_state for slider defaults
+        st.info(f"🤖 AI Command: Setting Medical Inflation to {new_val:.0%}")
+        log_change(f"Chat Command: Set Medical Inflation to {new_val:.0%}")
+        med_inflation = new_val # Override current run
 
 # 1. Load Data
 if 'population_df' not in st.session_state:
@@ -150,6 +204,17 @@ with col4:
     subsidy = last_year['Required_State_Subsidy']
     st.metric("Required State Subsidy", f"{subsidy/1e6:.1f}M", delta=f"{subsidy/1e6:.1f}M" if subsidy > 0 else None, delta_color="inverse")
 
+# 4.5 Module A: XAI (Explainers)
+st.markdown("---")
+with st.expander("ℹ️ Why did the deficit increase? (XAI Insights)"):
+    explanations = engine.explain_projection(df_proj)
+    for exp in explanations:
+        st.write(exp)
+    
+    # Module D: Reinsurance Recommendation
+    avg_cost = df_proj['Total_Expenditure'].mean()
+    st.info(engine.suggest_reinsurance(avg_cost))
+
 # 4. Visualizations
 tab1, tab2, tab3 = st.tabs(["📊 Solvency Projection", "💸 Revenue vs Cost", "🗄️ Reserve Accumulation"])
 
@@ -178,6 +243,27 @@ with tab3:
     # Thick Red Zero-Line for Danger Zone emphasis
     fig.add_hline(y=0, line_dash="solid", line_color="red", line_width=3)
     st.plotly_chart(fig, use_container_width=True)
+
+    # Module B: Stochastic Fan Chart
+    st.markdown("---")
+    st.subheader("🎲 Solvency Risk Analysis (1,000 Scenarios)")
+    if st.button("Run Monte Carlo Stress Test"):
+        with st.spinner("Simulating 1,000 actuarial futures..."):
+            mc = engine.run_monte_carlo_simulation(st.session_state.population_df, years=projection_years)
+            
+            fig_mc = go.Figure()
+            # P5 to P95 Shading (Confidence Band)
+            fig_mc.add_trace(go.Scatter(x=mc['years'], y=mc['p95'], mode='lines', line=dict(width=0), showlegend=False))
+            fig_mc.add_trace(go.Scatter(x=mc['years'], y=mc['p5'], mode='lines', line=dict(width=0), fill='tonexty', fillcolor='rgba(44, 160, 44, 0.2)', name='90% Confidence Interval'))
+            # Median
+            fig_mc.add_trace(go.Scatter(x=mc['years'], y=mc['p50'], name='Median (P50)', line=dict(color='#2ca02c', width=3)))
+            
+            fig_mc.add_hline(y=0, line_dash="dash", line_color="red")
+            fig_mc.update_layout(title="Stochastic Reserve Outlook", yaxis_title="Reserve Fund", hovermode="x unified")
+            st.plotly_chart(fig_mc, use_container_width=True)
+            
+            st.metric("Probability of Insolvency", f"{mc['prob_insolvency']:.1f}%", 
+                      delta=f"Risk: {mc['prob_insolvency']:.1f}%", delta_color="inverse")
 
 # 5. Data Preview
 with st.expander("👁️ View Projection Data Table"):

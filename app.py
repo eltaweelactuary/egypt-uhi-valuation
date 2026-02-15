@@ -91,7 +91,7 @@ with st.sidebar:
     if "crisis_mode" not in st.session_state:
         st.session_state.crisis_mode = False
         
-    crisis_trigger = st.button("🔴 Simulate Crisis Scenario", use_container_width=True, type="secondary" if not st.session_state.crisis_mode else "primary")
+    crisis_trigger = st.button("🔴 Simulate Crisis Scenario", width="stretch", type="secondary" if not st.session_state.crisis_mode else "primary")
     if crisis_trigger:
         st.session_state.crisis_mode = not st.session_state.crisis_mode
     
@@ -122,15 +122,15 @@ with st.sidebar:
         
         if os.path.exists("demo_port_said.csv"):
             with open("demo_port_said.csv", "rb") as f:
-                st.download_button("🚢 Port Said (High Risk)", f, "port_said_baseline.csv", "text/csv", use_container_width=True)
+                st.download_button("🚢 Port Said (High Risk)", f, "port_said_baseline.csv", "text/csv", width="stretch")
             
         if os.path.exists("demo_luxor.csv"):
             with open("demo_luxor.csv", "rb") as f:
-                st.download_button("🏛️ Luxor (Balanced)", f, "luxor_balanced.csv", "text/csv", use_container_width=True)
+                st.download_button("🏛️ Luxor (Balanced)", f, "luxor_balanced.csv", "text/csv", width="stretch")
             
         if os.path.exists("demo_cairo_industrial.csv"):
             with open("demo_cairo_industrial.csv", "rb") as f:
-                st.download_button("🏢 Cairo Industrial (Elite)", f, "cairo_elite.csv", "text/csv", use_container_width=True)
+                st.download_button("🏢 Cairo Industrial (Elite)", f, "cairo_elite.csv", "text/csv", width="stretch")
 
     with st.expander("🛡️ Immutable Audit Trail"):
         if not st.session_state.audit_log:
@@ -238,7 +238,7 @@ with tab1:
     fig.add_trace(go.Scatter(x=df_proj['Year'], y=df_proj['Total_Revenue'], name='Total Revenue', line=dict(color='#1f77b4', width=3)))
     fig.add_trace(go.Scatter(x=df_proj['Year'], y=df_proj['Total_Expenditure'], name='Total Expenditure', line=dict(color='#d62728', width=3, dash='dash')))
     fig.update_layout(yaxis_title="Amount (EGP)", hovermode="x unified")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 with tab2:
     st.subheader("Revenue vs Cost Delta")
@@ -247,7 +247,7 @@ with tab2:
                  color='Net_Position', 
                  color_continuous_scale=['red', 'green'],
                  title="Annual Surplus/Deficit (Before Investment Income)")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 with tab3:
     st.subheader("Reserve Fund Accumulation")
@@ -256,7 +256,7 @@ with tab3:
                   color_discrete_sequence=['#2ca02c'])
     # Thick Red Zero-Line for Danger Zone emphasis
     fig.add_hline(y=0, line_dash="solid", line_color="red", line_width=3)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     # Module B: Stochastic Fan Chart
     st.markdown("---")
@@ -274,7 +274,7 @@ with tab3:
             
             fig_mc.add_hline(y=0, line_dash="dash", line_color="red")
             fig_mc.update_layout(title="Stochastic Reserve Outlook", yaxis_title="Reserve Fund", hovermode="x unified")
-            st.plotly_chart(fig_mc, use_container_width=True)
+            st.plotly_chart(fig_mc, width="stretch")
             
             st.metric("Probability of Insolvency", f"{mc['prob_insolvency']:.1f}%", 
                       delta=f"Risk: {mc['prob_insolvency']:.1f}%", delta_color="inverse")
@@ -283,7 +283,7 @@ with tab3:
 with st.expander("👁️ View Projection Data Table"):
     # Display all columns except the raw Risk_Flags object to avoid formatting errors
     display_df = df_proj.drop(columns=['Risk_Flags'])
-    st.dataframe(display_df.style.format("{:,.0f}"), use_container_width=True)
+    st.dataframe(display_df.style.format("{:,.0f}"), width="stretch")
 
 st.markdown("---")
 st.caption("Legal Disclaimer: This model is for actuarial simulation based on the parameters of Law 2/2018. Investment income is assumed to be compounded annually.")

@@ -222,6 +222,59 @@ class ActuarialValuationEngine:
             "years": list(range(1, years + 1))
         }
 
+    def _detect_risk_flags(self, year_rev, year_exp, admin_exp, net_cf, reserve, inv_yield, med_infl, wage_infl) -> List[Dict]:
+        """
+        Actuarial Risk Detection Logic based on Law 2/2018.
+        """
+        flags = []
+        
+        # 1. Solvency Breach (Bankruptcy)
+        if reserve < 0:
+            flags.append({
+                "level": "CRITICAL",
+                "type": "Bankruptcy",
+                "msg": "Article 40 Guarantee Triggered: Technical insolvency projected.",
+                "action": "Immediate State Treasury Intervention Required."
+            })
+            
+        # 2. Inflation Gap
+        if med_infl > (wage_infl + 0.02):
+            flags.append({
+                "level": "WARNING",
+                "type": "Inflation Gap",
+                "msg": f"Medical inflation ({med_infl:.1%}) significantly exceeds wage growth ({wage_infl:.1%}).",
+                "action": "Renegotiate provider primary rates or increase payroll contribution caps."
+            })
+            
+        # 3. Admin Cost Violation (Legal Cap)
+        if admin_exp > (year_rev * 0.05):
+            flags.append({
+                "level": "CRITICAL",
+                "type": "Legal Breach",
+                "msg": f"Admin expenses ({admin_exp/year_rev:.1%}) exceed the 5% legal cap.",
+                "action": "Optimize administrative operations or freeze staff expansion."
+            })
+            
+        # 4. Liquidity Trap
+        if net_cf < 0 and reserve > 0:
+            flags.append({
+                "level": "WARNING",
+                "type": "Liquidity Trap",
+                "msg": "Operating deficit detected. System is currently eroding its reserve base.",
+                "action": "Introduce new revenue streams (e.g., Highway Tolls adjustment)."
+            })
+            
+        # 5. Asset Erosion
+        if inv_yield < med_infl:
+            flags.append({
+                "level": "WARNING",
+                "type": "Asset Erosion",
+                "msg": "Investment yields are failing to beat medical inflation.",
+                "action": "Shift investment portfolio to higher-yield treasury instruments."
+            })
+            
+        return flags
+
     def suggest_reinsurance(self, avg_annual_cost: float) -> str:
         """
         Module D: Reinsurance Optimization.
@@ -231,6 +284,48 @@ class ActuarialValuationEngine:
         potential_saving = avg_annual_cost * 0.005 # Estimated premium saving via optimized quota share
         
         return f"💡 Strategy: Retain first {retention/1e6:.1f}M EGP. Transfer excess risk to international re-insurers. Est. Saving: {potential_saving/1e6:.1f}M EGP."
+
+    def perform_agentic_audit(self, df_proj: pd.DataFrame) -> List[Dict]:
+        """
+        Module G: Agentic Intelligence (CrewAI Concept).
+        Simulates analysis from three specialized AI agents.
+        """
+        audit_results = []
+        last_year = df_proj.iloc[-1]
+        
+        # 1. Legislative Agent Analysis
+        leg_status = "✅ Compliant"
+        leg_msg = "All years follow Article 40 reserve mandates."
+        if (df_proj['Admin_Expenditure'] > df_proj['Total_Revenue'] * 0.05).any():
+            leg_status = "⚠️ Warning"
+            leg_msg = "Detected years where administrative overhead violates the 5% cap of Law 2/2018."
+        
+        audit_results.append({
+            "agent": "⚖️ Legislative Agent",
+            "status": leg_status,
+            "analysis": leg_msg,
+            "goal": "Enforce Law 2/2018"
+        })
+        
+        # 2. Actuarial Agent Analysis
+        act_status = "✅ Stable"
+        if last_year['Reserve_Fund'] < 0:
+            act_status = "🚨 Insolvency"
+        
+        audit_results.append({
+            "agent": "📊 Actuarial Agent",
+            "analysis": f"Projected system health is {act_status}. Probability of long-term solvency is being monitored via Monte Carlo.",
+            "goal": "Solvency Assurance"
+        })
+        
+        # 3. Financial Agent Analysis
+        audit_results.append({
+            "agent": "💰 Financial Agent",
+            "analysis": f"Current yield ({self.config.investment_return_rate:.1%}) vs Medical Inflation ({self.config.medical_inflation:.1%}). Reinsurance optimization recommended.",
+            "goal": "Asset Growth"
+        })
+        
+        return audit_results
 
 def generate_dummy_population(size: int = 1000) -> pd.DataFrame:
     """

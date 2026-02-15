@@ -128,25 +128,39 @@ with st.expander("🎓 **Guided Mission: How to use this Dashboard**", expanded=
 
 # 0.1 Module F: Agentic Oversight Team (CrewAI Concept)
 st.markdown("### 🤖 Agentic Oversight Team")
+agent_audit = engine.perform_agentic_audit(df_proj)
 agent_cols = st.columns(3)
-with agent_cols[0]:
-    st.info("**⚖️ Legislative Agent**\n\n*Status:* Monitoring Law 2/2018. Ensuring admin costs stay below 5% and Article 40 triggers are logged.")
-with agent_cols[1]:
-    st.info("**📊 Actuarial Agent**\n\n*Status:* Analyzing mortality & morbidity trends. Calculating P50 median solvency for Monte Carlo.")
-with agent_cols[2]:
-    st.info("**💰 Financial Agent**\n\n*Status:* Optimizing investment yields and Reinsurance retention limits.")
+for i, audit in enumerate(agent_audit):
+    with agent_cols[i % 3]:
+        st.info(f"**{audit['agent']}**\n\n*Goal:* {audit['goal']}\n\n*Analysis:* {audit['analysis']}")
 
 # 0.2 Module E: AI Chat with Data
-chat_input = st.text_input("💬 Ask the Actuary AI (e.g., 'increase inflation to 15%')")
+chat_input = st.text_input("💬 Ask the Actuary AI (e.g., 'Analyze our insolvency risk' or 'increase inflation to 15%')")
 if chat_input:
     import re
     inf_match = re.search(r"inflation to (\d+)%", chat_input.lower())
     if inf_match:
         new_val = int(inf_match.group(1)) / 100
-        # This is a demo trigger - in real app would use session_state for slider defaults
         st.info(f"🤖 AI Command: Setting Medical Inflation to {new_val:.0%}")
         log_change(f"Chat Command: Set Medical Inflation to {new_val:.0%}")
         med_inflation = new_val # Override current run
+    else:
+        # Deep Reasoning via Gemini
+        with st.spinner("🤖 Consulting Gemini Actuary..."):
+            from gcp_utils import ask_gemini_actuary
+            
+            # Create a concise context for Gemini
+            data_summary = f"""
+            - Years Projected: {projection_years}
+            - Final Reserve: {df_proj.iloc[-1]['Reserve_Fund']/1e6:.1f}M EGP
+            - Probability of Insolvency: {mc.get('prob_insolvency', 'N/A') if 'mc' in locals() else 'N/A'}%
+            - Medical Inflation: {med_inflation:.1%}
+            - Wage growth: {wage_inflation:.1%}.
+            """
+            
+            ai_response = ask_gemini_actuary(chat_input, data_summary)
+            st.markdown(f"**🤖 Gemini Actuary:**\n\n{ai_response}")
+            log_change(f"AI Consultation: Asked '{chat_input}'")
 
 # 1. Load Data
 if 'population_df' not in st.session_state:

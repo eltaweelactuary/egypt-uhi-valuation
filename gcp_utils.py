@@ -55,17 +55,29 @@ def get_gcp_credentials():
             # and to satisfy the google-auth library's preference for files.
             info = dict(st.secrets["gcp_service_account"])
             
-            # Reconstruction of private key: Atomic extraction of the PEM block
+            # Reconstruction of private key: Atomic extraction AND Binary Normalization
             if "private_key" in info:
                 pk = info["private_key"]
                 import re
-                # This regex captures EXACTLY the block between the markers and ignores anything else.
-                # This is the "Silver Bullet" for ASN.1 extra data errors.
-                match = re.search(r'(-----BEGIN PRIVATE KEY-----[\s\S]*?-----END PRIVATE KEY-----)', pk)
+                import base64
+                
+                # 1. Atomic extraction (Markers only)
+                match = re.search(r'-----BEGIN PRIVATE KEY-----([\s\S]*?)-----END PRIVATE KEY-----', pk)
                 if match:
-                    info["private_key"] = match.group(1)
+                    body_raw = match.group(1).replace("\\n", "").replace("\n", "").strip()
+                    try:
+                        # 2. Binary Normalization (The "Titanium" Fix)
+                        # Strip all internal whitespace and decode to binary
+                        clean_body_raw = "".join(body_raw.split())
+                        binary_key = base64.b64decode(clean_body_raw)
+                        # Re-encode to pure, line-wrapped Base64
+                        body_encoded = base64.b64encode(binary_key).decode('utf-8')
+                        # Wrap at 64 chars (standard PEM)
+                        wrapped_body = "\n".join([body_encoded[i:i+64] for i in range(0, len(body_encoded), 64)])
+                        info["private_key"] = f"-----BEGIN PRIVATE KEY-----\n{wrapped_body}\n-----END PRIVATE KEY-----\n"
+                    except Exception:
+                        info["private_key"] = match.group(0) # Fallback to original match
                 else:
-                    # Fallback for keys that might have escaped newlines instead of real ones
                     pk = pk.replace("\\n", "\n").strip().strip('"').strip("'")
                     info["private_key"] = pk
 
@@ -84,6 +96,68 @@ def get_gcp_credentials():
             st.error(f"GCP Initialization Error: {e}")
         
     return None
+
+def initialize_vertex_ai():
+    """
+    Initializes the Vertex AI SDK using the already established credentials and environment.
+    """
+    import vertexai
+    
+    # 1. Ensure credentials exist and environment variable is set
+    creds = get_gcp_credentials()
+    if not creds:
+        return False
+        
+    project_id = None
+    if "gcp_service_account" in st.secrets:
+        project_id = st.secrets["gcp_service_account"].get("project_id")
+    
+    if not project_id:
+        # Fallback to local file if available
+        local_path = "service_account.json"
+        if os.path.exists(local_path):
+            with open(local_path, 'r') as f:
+                project_id = json.load(f).get("project_id")
+                
+    if project_id:
+        try:
+            vertexai.init(project=project_id, location="us-central1")
+            return True
+        except Exception as e:
+            st.error(f"Vertex AI Init Error: {e}")
+            
+    return False
+
+def ask_gemini_actuary(user_query: str, data_summary: str):
+    """
+    Sends a strategic actuarial query to Gemini with context.
+    """
+    from vertexai.generative_models import GenerativeModel
+    
+    if not initialize_vertex_ai():
+        return "⚠️ Gemini is unavailable: Check GCP Configuration."
+        
+    try:
+        model = GenerativeModel("gemini-1.5-flash")
+        
+        system_prompt = f"""
+        You are a Senior Actuarial AI Advisor for the Egyptian UHI Authority.
+        You take technical actuarial projections and provide strategic, executive-level reasoning.
+        
+        DATA CONTEXT:
+        {data_summary}
+        
+        GUIDELINES:
+        - Align with Law 2/2018.
+        - Be precise but strategic. 
+        - If the query is about specific assumptions, justify them using actuarial principles.
+        - Respond in the language of the query (English or Arabic).
+        """
+        
+        response = model.generate_content(f"{system_prompt}\n\nUSER QUERY: {user_query}")
+        return response.text
+    except Exception as e:
+        return f"❌ Gemini Error: {str(e)}"
 
 def get_gcp_diagnostics():
     """

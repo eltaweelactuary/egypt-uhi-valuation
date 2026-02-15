@@ -83,7 +83,7 @@ with st.sidebar:
     
     # Define Preset Values
     if scenario == "Balanced Sustainability (Surplus)":
-        p_med_inf, p_wage_inf, p_inv_ret, p_admin = 9.0, 8.0, 12.0, 0.04
+        p_med_inf, p_wage_inf, p_inv_ret, p_admin = 8.5, 8.0, 14.0, 0.04
     elif scenario == "High-Efficiency Growth (Elite Surplus)":
         p_med_inf, p_wage_inf, p_inv_ret, p_admin = 7.0, 8.0, 15.0, 0.03
     else: # Baseline
@@ -142,6 +142,11 @@ with st.sidebar:
                 st.caption(f"[{log['time']}] {log['action']}")
     
     st.info("Terminologies aligned with Egypt Law 2/2018")
+    
+    st.divider()
+    if st.button("🔄 Reset & Return to Main", width="stretch"):
+        st.session_state.population_df = None
+        st.rerun()
 
 # =============================================================================
 # MAIN CONTENT
@@ -202,6 +207,14 @@ with col3:
 with col4:
     subsidy = last_year['Required_State_Subsidy']
     st.metric("Required State Subsidy", f"{subsidy/1e6:.1f}M", delta=f"{subsidy/1e6:.1f}M" if subsidy > 0 else None, delta_color="inverse")
+
+# 3.5 Scenario Goal & Status Indicator
+status_color = "#28a745" if last_year['Reserve_Fund'] > 0 else "#dc3545"
+st.markdown(f"""
+<div style="background-color: {status_color}; color: white; padding: 10px; border-radius: 5px; text-align: center; margin-bottom: 20px;">
+    <strong>Strategic Objective:</strong> {'✅ SUSTAINABLE SURPLUS - Article 40 Compliant' if last_year['Reserve_Fund'] > 0 else '⚠️ CRITICAL DEFICIT - Article 40 Guarantee Triggered'}
+</div>
+""", unsafe_allow_html=True)
 
 # 4. EXECUTIVE RISK ALERT CENTER
 st.markdown("### 🚨 Executive Risk Alerts")

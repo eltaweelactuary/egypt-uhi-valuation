@@ -25,7 +25,7 @@ class UHISystemConfig:
     # Demographic & Law-specific Rates
     participation_rate: float = 1.0
     employee_contr_rate: float = 0.01
-    employer_contr_rate: float = 0.03
+    employer_contr_rate: float = 0.04
     self_employed_contr_rate: float = 0.04  # Total 4% for self-employed
     family_spouse_contr_rate: float = 0.03
     family_child_contr_rate: float = 0.01
@@ -108,7 +108,8 @@ class ActuarialValuationEngine:
             rev_work = total_work_revenue_base * year_wage_growth
             rev_family = family_contr_base * year_wage_growth
             rev_state = state_support_base * year_wage_growth
-            rev_other = self.config.cigarette_tax_lump + self.config.highway_tolls_lump
+            # Other revenue (taxes/tolls) now grows with inflation to prevent deficit erosion
+            rev_other = (self.config.cigarette_tax_lump + self.config.highway_tolls_lump) * year_wage_growth
             
             total_revenue = rev_work + rev_family + rev_state + rev_other
             

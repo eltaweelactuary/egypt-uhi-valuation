@@ -181,7 +181,9 @@ with tab3:
 
 # 5. Data Preview
 with st.expander("👁️ View Projection Data Table"):
-    st.dataframe(df_proj.style.format("{:,.0f}"), use_container_width=True)
+    # Display all columns except the raw Risk_Flags object to avoid formatting errors
+    display_df = df_proj.drop(columns=['Risk_Flags'])
+    st.dataframe(display_df.style.format("{:,.0f}"), use_container_width=True)
 
 st.markdown("---")
 st.caption("Legal Disclaimer: This model is for actuarial simulation based on the parameters of Law 2/2018. Investment income is assumed to be compounded annually.")

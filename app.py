@@ -1,5 +1,6 @@
 # Actuarial Valuation Dashboard (UHI Egypt)
 # Law No. 2 of 2018 Compliance
+# v1.0.4 - System Sync Fix
 
 import streamlit as st
 import pandas as pd

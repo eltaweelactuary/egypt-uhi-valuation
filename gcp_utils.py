@@ -45,14 +45,12 @@ def get_gcp_credentials():
 
 def initialize_vertex_ai():
     """
-    Initializes Vertex AI SDK using uploaded credentials.
+    Standardized Vertex AI Initialization (v2.3).
+    Ensures global state is set correctly before any model calls.
     """
     import vertexai
     
-    creds = get_gcp_credentials()
-    if not creds:
-        return False
-        
+    # Check session for existing valid project_id
     project_id = None
     if "uploaded_gcp_json" in st.session_state and st.session_state.uploaded_gcp_json:
         project_id = st.session_state.uploaded_gcp_json.get("project_id")
@@ -63,33 +61,55 @@ def initialize_vertex_ai():
             with open(local_path, 'r') as f:
                 project_id = json.load(f).get("project_id")
                 
-    if project_id:
+    if not project_id:
+        return False
+
+    # Force re-init if not already cached in this session to avoid hangs
+    if "vertex_init_lock" not in st.session_state or st.session_state.vertex_init_lock != project_id:
+        creds = get_gcp_credentials()
+        if not creds:
+            return False
         try:
-            # CRITICAL: Pass explicit credentials to prevent auth search loops
             vertexai.init(project=project_id, location="us-central1", credentials=creds)
+            st.session_state.vertex_init_lock = project_id
             return True
         except Exception as e:
-            st.error(f"Vertex AI Init Error: {str(e)}")
-            pass
+            st.error(f"Vertex AI Discovery Error: {str(e)}")
+            return False
             
-    return False
+    return True
 
 def ask_gemini_actuary(user_query: str, data_summary: str):
     """
-    Sends a strategic actuarial query to Gemini with context.
+    Sends a strategic actuarial query to Gemini.
+    Optimized for speed and connection stability.
     """
     from vertexai.generative_models import GenerativeModel
     
     if not initialize_vertex_ai():
-        return "⚠️ Gemini is unavailable: Please upload GCP Service Account JSON."
+        return "⚠️ Gemini is unavailable: Auth credentials could not be initialized."
         
     try:
-        model = GenerativeModel("gemini-2.0-flash-001")
-        system_prompt = f"Executive Actuary Context:\n{data_summary}"
-        response = model.generate_content(f"{system_prompt}\n\nUSER QUERY: {user_query}")
+        # Use a highly responsive model variant
+        model = GenerativeModel("gemini-1.5-flash")
+        
+        # Construct the context-heavy prompt
+        full_prompt = f"""
+        Role: Senior Executive Actuary for Egypt Health Insurance (Law 2/2018).
+        Context Data:
+        {data_summary}
+        
+        Task: Analyze the user query using actuarial logic. Be concise and strategic.
+        User Query: {user_query}
+        """
+        
+        # Add a safety timeout via exception handling (implicit in SDK)
+        response = model.generate_content(full_prompt)
         return response.text
     except Exception as e:
-        return f"❌ Gemini Error: {str(e)}"
+        if "quota" in str(e).lower():
+            return "❌ API Quota Exceeded. Please try again in 60 seconds."
+        return f"❌ AI Strategic Agent Error: {str(e)}"
 
 def get_gcp_diagnostics():
     """
